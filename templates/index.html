@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Éditeur de Planches BD - Version Corrigée</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+        }
+
+        .main-container {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* Sidebar pour les contrôles */
+        .sidebar {
+            width: 320px;
+            background: white;
+            border-right: 1px solid #ddd;
+            padding: 20px;
+            overflow-y: auto;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+        }
+
+        .sidebar h1 {
+            font-size: 18px;
+            margin-top: 0;
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+
+        /* Zone principale avec l'éditeur */
+        .editor-container {
+            flex: 1;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+
+        .upload-section {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            border: 1px solid #dee2e6;
+        }
+
+        .upload-section h2 {
+            font-size: 16px;
+            margin-top: 0;
+            color: #495057;
+        }
+
+        .drop-zone {
+            border: 2px dashed #dee2e6;
+            border-radius: 6px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            background: white;
+            transition: all 0.3s ease;
+        }
+
+        .drop-zone:hover,
+        .drop-zone.drag-over {
+            border-color: #007bff;
+            background-color: #f8f9fa;
+        }
+
+        .file-input-button {
+            background: #007bff;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            border: none;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+
+        .file-input-button:hover {
+            background: #0056b3;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        /* Contrôles de qualité dans la sidebar */
+        .quality-controls {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+
+        .quality-controls h3 {
+            margin-top: 0;
+            font-size: 16px;
+            color: #495057;
+        }
+
+        .control-group {
+            margin-bottom: 12px;
+        }
+
+        .control-group label {
+            display: block;
+            margin-bottom: 4px;
+            font-weight: 500;
+            font-size: 13px;
+            color: #495057;
+        }
+
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .quality-slider {
+            flex: 1;
+            height: 4px;
+        }
+
+        .quality-value {
+            background: #007bff;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 12px;
+            font-weight: bold;
+            min-width: 30px;
+            text-align: center;
+        }
+
+        select {
+            width: 100%;
+            padding: 6px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+
+        .algorithm-info {
+            font-size: 11px;
+            color: #6c757d;
+            margin-top: 3px;
+            font-style: italic;
+        }
+
+        /* Miniatures des images dans la sidebar */
+        .thumbnails-section {
+            margin: 15px 0;
+        }
+
+        .thumbnails-section h3 {
+            font-size: 14px;
+            margin-bottom: 10px;
+            color: #495057;
+        }
+
+        .thumbnails-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+
+        .thumbnail-item {
+            width: 60px;
+            height: 60px;
+            object-fit: cover;
+            border-radius: 4px;
+            cursor: grab;
+            border: 2px solid #ddd;
+            transition: border-color 0.3s;
+        }
+
+        .thumbnail-item:hover {
+            border-color: #007bff;
+        }
+
+        .thumbnail-item:active {
+            cursor: grabbing;
+        }
+
+        /* Zone d'édition principale */
+        #editor-area {
+            position: relative;
+            text-align: center;
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            min-height: 600px;
+        }
+
+        #editor-area img#template-image {
+            max-width: 100%;
+            height: auto;
+            border-radius: 4px;
+        }
+
+        /* CORRECTION CLIPPING : Les zones de drop clippent leur contenu */
+        .panel-drop-zone {
+            position: absolute;
+            border: 2px dashed #007bff;
+            background-color: rgba(0, 123, 255, 0.08);
+            cursor: pointer;
+            z-index: 10;
+            transition: all 0.3s ease;
+            /* CLIPPING ESSENTIEL : */
+            overflow: hidden; /* Les images ne peuvent pas dépasser */
+        }
+
+        .panel-drop-zone:hover {
+            background-color: rgba(0, 123, 255, 0.15);
+            border-color: #0056b3;
+        }
+
+        /* Images dans les zones de drop */
+        .panel-drop-zone img {
+            position: absolute;
+            cursor: move;
+            border-radius: 2px;
+            /* Suppression des contraintes de taille automatiques */
+            max-width: none;
+            max-height: none;
+            width: auto;
+            height: auto;
+        }
+
+        /* Bouton de sauvegarde */
+        .save-section {
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        .save-button {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .save-button:hover {
+            background: #218838;
+            transform: translateY(-1px);
+        }
+
+        .save-button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Messages de statut */
+        .status-message {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-size: 13px;
+        }
+
+        .status-success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+
+        .status-error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+
+        /* Barre de progression */
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background-color: #e9ecef;
+            border-radius: 3px;
+            overflow: hidden;
+            margin: 8px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #28a745, #20c997);
+            transition: width 0.3s ease;
+            border-radius: 3px;
+        }
+
+        /* Mode responsive */
+        @media (max-width: 768px) {
+            .main-container {
+                flex-direction: column;
+            }
+            
+            .sidebar {
+                width: 100%;
+                max-height: 400px;
+            }
+            
+            .thumbnails-grid {
+                grid-template-columns: repeat(6, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <!-- Sidebar avec contrôles -->
+        <div class="sidebar">
+            <h1>🎨 Éditeur BD</h1>
+
+            <!-- Upload Template -->
+            <div class="upload-section">
+                <h2>1. Template</h2>
+                <form action="/upload_template" method="post" enctype="multipart/form-data">
+                    <input type="file" name="template_file" accept="image/*" required />
+                    <input type="submit" value="Charger" class="file-input-button" />
+                </form>
+            </div>
+
+            <!-- Upload Images -->
+            <div class="upload-section">
+                <h2>2. Vos Images</h2>
+                <div class="drop-zone" id="drop-zone">
+                    <p>📁 Glisser images ici</p>
+                    <input type="file" name="panel_files[]" multiple accept="image/*" id="file-input" class="file-input" />
+                    <button type="button" class="file-input-button" onclick="document.getElementById('file-input').click()">
+                        Parcourir
+                    </button>
+                </div>
+                <div class="progress-bar" id="progress-bar" style="display: none;">
+                    <div class="progress-fill" id="progress-fill"></div>
+                </div>
+                <div id="status-message"></div>
+            </div>
+
+            <!-- Miniatures -->
+            {% if panel_images %}
+            <div class="thumbnails-section">
+                <h3>📸 Images ({{ panel_images|length }})</h3>
+                <div class="thumbnails-grid">
+                    {% for image in panel_images %}
+                        <img src="{{ url_for('uploaded_file', filename=image) }}" 
+                             alt="Image" 
+                             class="thumbnail-item"
+                             draggable="true" />
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Contrôles de Qualité -->
+            <div class="quality-controls">
+                <h3>⚙️ Qualité</h3>
+
+                <div class="control-group">
+                    <label for="quality-slider">Qualité :</label>
+                    <div class="slider-container">
+                        <input type="range" id="quality-slider" class="quality-slider" min="1" max="100" value="95" />
+                        <span class="quality-value" id="quality-value">95</span>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label for="resize-algorithm">Algorithme :</label>
+                    <select id="resize-algorithm">
+                        <option value="LANCZOS">LANCZOS - Haute qualité</option>
+                        <option value="BICUBIC">BICUBIC - Bonne qualité</option>
+                        <option value="BILINEAR">BILINEAR - Normale</option>
+                        <option value="NEAREST">NEAREST - Rapide</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label for="output-format">Format :</label>
+                    <select id="output-format">
+                        <option value="PNG">PNG - Sans perte</option>
+                        <option value="JPEG">JPEG - Compressé</option>
+                        <option value="WEBP">WebP - Moderne</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label>
+                        <input type="checkbox" id="optimize" checked /> Optimiser
+                    </label>
+                </div>
+
+                <div class="control-group">
+                    <label>
+                        <input type="checkbox" id="enhance-quality" /> Améliorer netteté
+                    </label>
+                </div>
+            </div>
+
+            <!-- Bouton Générer -->
+            <div class="save-section">
+                <button id="save-button" class="save-button">💾 Générer BD</button>
+            </div>
+        </div>
+
+        <!-- Zone d'édition principale -->
+        <div class="editor-container">
+            <div id="editor-area">
+                {% if template_image %}
+                    <img src="{{ url_for('uploaded_file', filename=template_image) }}" 
+                         alt="Planche de BD" 
+                         id="template-image" />
+                {% else %}
+                    <p>Chargez d'abord une planche template pour commencer.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Coordonnées des panels -->
+    {% if panel_coordinates %}
+        <script>
+            window.panelCoordinates = {{ panel_coordinates|tojson }};
+        </script>
+    {% else %}
+        <script>
+            window.panelCoordinates = [];
+        </script>
+    {% endif %}
+
+    <!-- JavaScript principal -->
+    <script src="{{ url_for('static', filename='main.js') }}"></script>
+</body>
+</html>
