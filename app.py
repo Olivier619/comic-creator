@@ -144,6 +144,13 @@ def upload_template():
     # Clear old panel images when new template uploaded
     session.pop('panel_images', None)
 
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.is_json or 'json' in request.accept_mimetypes.content_types:
+        return jsonify({
+            'success': True,
+            'template_image': filename,
+            'panel_coordinates': panel_coords
+        })
+
     return redirect(url_for('index'))
 
 # Route pour servir les fichiers uploadés

@@ -275,88 +275,107 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function handleSaveWithQuality(dropZones) {
-        const templateImage = document.querySelector('#template-image');
-        if (!templateImage || !templateImage.naturalWidth) {
-            alert("Erreur : Image template introuvable");
-            return;
-        }
-
-        const scale = templateImage.clientWidth / templateImage.naturalWidth;
-        const imagesData = [];
-
-        dropZones.forEach(zone => {
-            const img = zone.querySelector('img');
-            if (img) {
-                const url = new URL(img.src);
-
-                // Coordonnées en pixels réels de l'image originale
-                const realLeft = parseFloat(img.style.left) / scale;
-                const realTop = parseFloat(img.style.top) / scale;
-                const realWidth = img.clientWidth / scale;
-
-                imagesData.push({
-                    src: url.pathname.split('/').pop(),
-                    panel_x: parseInt(zone.dataset.originalX),
-                    panel_y: parseInt(zone.dataset.originalY),
-                    panel_w: parseInt(zone.dataset.originalW),
-                    panel_h: parseInt(zone.dataset.originalH),
-                    img_left: realLeft,
-                    img_top: realTop,
-                    img_w: realWidth,
-                });
-            }
-        });
-
-        console.log('Images à sauvegarder:', imagesData);
-
-        // Récupérer les paramètres de qualité
-        const requestData = {
-            images: imagesData,
-            quality: parseInt(document.getElementById('quality-slider')?.value) || 95,
-            resize_algorithm: document.getElementById('resize-algorithm')?.value || 'LANCZOS',
-            output_format: document.getElementById('output-format')?.value || 'PNG',
-            optimize: document.getElementById('optimize')?.checked || true,
-            enhance_quality: document.getElementById('enhance-quality')?.checked || false
-        };
-
         const saveButton = document.getElementById('save-button');
         saveButton.textContent = '⏳ Génération...';
         saveButton.disabled = true;
 
         try {
-            const response = await fetch('/generate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(requestData)
-            });
+            const blob = await generateOnClient(dropZones);
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
 
-            if (response.ok) {
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.style.display = 'none';
-                a.href = url;
+            const format = document.getElementById('output-format')?.value || 'PNG';
+            const quality = document.getElementById('quality-slider')?.value || 95;
+            const ext = format.toLowerCase() === 'jpeg' ? 'jpg' : format.toLowerCase();
+            a.download = `planche_bd_q${quality}.${ext}`;
 
-                const format = requestData.output_format.toLowerCase();
-                const ext = format === 'jpeg' ? 'jpg' : format;
-                a.download = `planche_bd_q${requestData.quality}.${ext}`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            a.remove();
 
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-                a.remove();
-
-                showStatusMessage('✅ Planche générée !', 'success');
-            } else {
-                showStatusMessage('❌ Erreur génération', 'error');
-            }
+            showStatusMessage('✅ Planche générée localement !', 'success');
         } catch (error) {
-            console.error('Erreur:', error);
-            showStatusMessage('❌ Erreur connexion', 'error');
+            console.error('Erreur génération:', error);
+            showStatusMessage('❌ Erreur génération', 'error');
         } finally {
             saveButton.textContent = '💾 Générer BD';
             saveButton.disabled = false;
         }
+    }
+
+    async function generateOnClient(dropZones) {
+        return new Promise(async (resolve, reject) => {
+            const templateImage = document.querySelector('#template-image');
+            if (!templateImage || !templateImage.naturalWidth) {
+                return reject("Template introuvable");
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = templateImage.naturalWidth;
+            canvas.height = templateImage.naturalHeight;
+            const ctx = canvas.getContext('2d');
+
+            // 1. Dessiner le template
+            ctx.drawImage(templateImage, 0, 0);
+
+            // 2. Dessiner chaque panel
+            const scale = templateImage.clientWidth / templateImage.naturalWidth;
+
+            for (const zone of dropZones) {
+                const img = zone.querySelector('img');
+                if (!img) continue;
+
+                const filename = img.dataset.filename;
+                const sourceFile = window.localImages[filename];
+
+                // Charger l'image source (non compressée si possible ou celle du preview)
+                const panelImg = new Image();
+                panelImg.src = img.src; // Utilise l'ObjectURL local
+                await new Promise(r => panelImg.onload = r);
+
+                // Dimensions du panel sur le canvas réel
+                const panelX = parseInt(zone.dataset.originalX);
+                const panelY = parseInt(zone.dataset.originalY);
+                const panelW = parseInt(zone.dataset.originalW);
+                const panelH = parseInt(zone.dataset.originalH);
+
+                // Rognage (Clipping)
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(panelX, panelY, panelW, panelH);
+                ctx.clip();
+
+                // Position de l'image par rapport au panel (échelle réelle)
+                const imgRealW = img.clientWidth / scale;
+                const imgRealH = img.clientHeight / scale;
+                const imgRealX = panelX + (parseFloat(img.style.left) / scale);
+                const imgRealY = panelY + (parseFloat(img.style.top) / scale);
+
+                // Option: Amélioration de la netteté si cochée
+                if (document.getElementById('enhance-quality')?.checked) {
+                    ctx.filter = 'contrast(1.1) saturate(1.1)';
+                }
+
+                ctx.drawImage(panelImg, imgRealX, imgRealY, imgRealW, imgRealH);
+                ctx.restore();
+            }
+
+            // Exporter le résultat
+            const format = document.getElementById('output-format')?.value || 'PNG';
+            const quality = parseInt(document.getElementById('quality-slider')?.value) / 100 || 0.95;
+
+            let mimeType = 'image/png';
+            if (format === 'JPEG') mimeType = 'image/jpeg';
+            if (format === 'WEBP') mimeType = 'image/webp';
+
+            canvas.toBlob((blob) => {
+                if (blob) resolve(blob);
+                else reject("Échec export canvas");
+            }, mimeType, quality);
+        });
     }
 
     // --- Upload d'images ---
@@ -365,11 +384,52 @@ document.addEventListener('DOMContentLoaded', () => {
         const fileInput = document.getElementById('file-input');
         const qualitySlider = document.getElementById('quality-slider');
         const qualityValue = document.getElementById('quality-value');
+        const templateForm = document.querySelector('form[action="/upload_template"]');
 
         if (qualitySlider && qualityValue) {
             qualitySlider.addEventListener('input', (e) => {
                 qualityValue.textContent = e.target.value;
             });
+        }
+
+        if (templateForm) {
+            templateForm.onsubmit = async (e) => {
+                e.preventDefault();
+                const file = templateForm.querySelector('input[type="file"]').files[0];
+                if (!file) return;
+
+                const formData = new FormData();
+                formData.append('template_file', file);
+
+                try {
+                    showStatusMessage('⏳ Analyse du template...', 'success');
+                    const response = await fetch('/upload_template', {
+                        method: 'POST',
+                        body: formData,
+                        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                        window.localTemplate = file;
+                        const objectUrl = URL.createObjectURL(file);
+
+                        // Mettre à jour l'image template dans l'éditeur
+                        const editorArea = document.getElementById('editor-area');
+                        let templateImage = document.getElementById('template-image');
+                        if (!templateImage) {
+                            editorArea.innerHTML = `<img src="${objectUrl}" alt="Planche de BD" id="template-image" />`;
+                        } else {
+                            templateImage.src = objectUrl;
+                        }
+
+                        initializeEditor(data.panel_coordinates, objectUrl);
+                        showStatusMessage('✅ Template prêt !', 'success');
+                    }
+                } catch (err) {
+                    console.error("Erreur template:", err);
+                    showStatusMessage('❌ Erreur chargement template', 'error');
+                }
+            };
         }
 
         if (dropZone) {
@@ -408,69 +468,52 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function handleFileUpload(files) {
         showProgress();
-        const statusDiv = document.getElementById('status-message');
-        const thumbnailsGrid = document.querySelector('.thumbnails-grid');
-        const thumbnailsSection = document.querySelector('.thumbnails-section');
+        const thumbnailsGrid = document.querySelector('.thumbnails-grid') || createThumbnailsGrid();
 
         let successCount = 0;
         let totalFiles = files.length;
 
         for (let i = 0; i < files.length; i++) {
             let file = files[i];
-
-            // Mise à jour de la barre de progression
             updateProgressBar((i / totalFiles) * 100);
 
-            // Gestion de la compression si trop gros (> 4 Mo pour Vercel)
-            const MAX_SIZE = 4 * 1024 * 1024;
-            console.log(`Fichier: ${file.name}, Taille: ${(file.size / 1024 / 1024).toFixed(2)} Mo`);
+            // Instant preview local
+            const objectUrl = URL.createObjectURL(file);
+            const filename = `local_${Date.now()}_${file.name}`;
+            window.localImages[filename] = file;
 
-            if (file.size > MAX_SIZE) {
-                console.log(`Compression requise pour Vercel...`);
-                try {
-                    file = await compressImage(file);
-                    console.log(`Après compression: ${(file.size / 1024 / 1024).toFixed(2)} Mo`);
-                } catch (err) {
-                    console.error("Erreur compression:", err);
-                }
-            }
+            // Ajouter à la grille immédiatement
+            const img = document.createElement('img');
+            img.src = objectUrl;
+            img.className = 'thumbnail-item';
+            img.dataset.filename = filename;
+            img.draggable = true;
+            img.addEventListener('dragstart', handleDragStart);
+            thumbnailsGrid.appendChild(img);
 
+            // On tente quand même l'upload en tâche de fond pour la détection future (optionnel)
             const formData = new FormData();
             formData.append('panel_file', file);
+            fetch('/upload_panels', { method: 'POST', body: formData }).catch(() => { });
 
-            try {
-                const response = await fetch('/upload_panels', {
-                    method: 'POST',
-                    body: formData
-                });
-                const data = await response.json();
-
-                if (data.success) {
-                    successCount++;
-                    // Ajouter l'image à la grille sans recharger
-                    if (thumbnailsGrid && data.total_images) {
-                        // On récupère le dernier nom de fichier ajouté
-                        const newFilename = data.errors && data.errors.length ? null : data.panel_filenames?.[data.panel_filenames.length - 1];
-                        // Note: Le backend actuel ne renvoie pas panel_filenames, je vais l'ajuster ou utiliser une autre méthode
-                        // Pour l'instant, disons qu'on force l'UI à se rafraîchir plus intelligemment ou on prévient l'utilisateur
-                    }
-                }
-            } catch (error) {
-                console.error(`Erreur upload ${file.name}:`, error);
-            }
+            successCount++;
         }
 
         updateProgressBar(100);
         setTimeout(hideProgress, 500);
+        showStatusMessage(`✅ ${successCount} images ajoutées localement`, 'success');
+    }
 
-        if (successCount > 0) {
-            showStatusMessage(`✅ ${successCount}/${totalFiles} images ajoutées. Veuillez patienter...`, 'success');
-            // Comme le stockage Vercel est complexe, on fait un reload soft ou on prévient
-            // Pour l'instant, on recharge pour peupler panel_images du template, mais on a réduit le risque de 403
-            setTimeout(() => location.reload(), 1500);
-        } else {
-            showStatusMessage('❌ Erreur upload', 'error');
+    function createThumbnailsGrid() {
+        let section = document.querySelector('.thumbnails-section');
+        if (!section) {
+            section = document.createElement('div');
+            section.className = 'thumbnails-section';
+            section.innerHTML = '<h3>📸 Images</h3><div class="thumbnails-grid"></div>';
+            const qualityControls = document.querySelector('.quality-controls');
+            qualityControls.parentNode.insertBefore(section, qualityControls);
         }
+        return section.querySelector('.thumbnails-grid');
     }
 
     function updateProgressBar(percent) {
