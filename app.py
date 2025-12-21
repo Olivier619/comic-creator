@@ -155,6 +155,8 @@ def uploaded_file(filename):
 @app.route('/upload_panels', methods=['POST'])
 def upload_panels():
     files = request.files.getlist('panel_files[]')
+    if not files:
+        files = request.files.getlist('panel_file')
     panel_filenames = session.get('panel_images', [])
 
     uploaded_count = 0
@@ -188,6 +190,7 @@ def upload_panels():
         'success': uploaded_count > 0,
         'uploaded_count': uploaded_count,
         'total_images': len(panel_filenames),
+        'panel_filenames': panel_filenames,
         'errors': errors
     })
 

@@ -32,7 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Obtenir la position de l'image template
             const templateRect = templateImage.getBoundingClientRect();
             const editorRect = editorArea.getBoundingClientRect();
-            
+
             // Décalage de l'image par rapport au conteneur
             const offsetX = templateRect.left - editorRect.left;
             const offsetY = templateRect.top - editorRect.top;
@@ -50,7 +50,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 zone.style.width = `${coords.width * scale}px`;
                 zone.style.height = `${coords.height * scale}px`;
                 zone.style.zIndex = '10';
-                
+
                 // Stocker les coordonnées originales
                 zone.dataset.originalX = coords.x;
                 zone.dataset.originalY = coords.y;
@@ -172,16 +172,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         document.addEventListener('mousemove', (e) => {
             if (!isDragging) return;
-            
+
             const dx = e.clientX - startX;
             const dy = e.clientY - startY;
-            
+
             const newLeft = startLeft + dx;
             const newTop = startTop + dy;
-            
+
             img.style.left = `${newLeft}px`;
             img.style.top = `${newTop}px`;
-            
+
             // IMPORTANT: Pas de contraintes ici car l'overflow:hidden du CSS s'en charge
             // L'utilisateur peut déplacer l'image librement, mais elle sera clippée visuellement
         });
@@ -196,11 +196,11 @@ document.addEventListener('DOMContentLoaded', () => {
         // Zoom avec la molette
         img.addEventListener('wheel', (e) => {
             e.preventDefault();
-            
+
             const zoomFactor = 1.1;
             const currentWidth = img.clientWidth;
             const currentHeight = img.clientHeight;
-            
+
             let newWidth, newHeight;
             if (e.deltaY < 0) {
                 // Zoom in
@@ -226,7 +226,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Calculer la nouvelle position pour garder le point de zoom fixe
             const currentLeft = parseFloat(img.style.left) || 0;
             const currentTop = parseFloat(img.style.top) || 0;
-            
+
             const newLeft = currentLeft + mouseX - (mouseX * newWidth / currentWidth);
             const newTop = currentTop + mouseY - (mouseY * newHeight / currentHeight);
 
@@ -288,7 +288,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const img = zone.querySelector('img');
             if (img) {
                 const url = new URL(img.src);
-                
+
                 // Coordonnées en pixels réels de l'image originale
                 const realLeft = parseFloat(img.style.left) / scale;
                 const realTop = parseFloat(img.style.top) / scale;
@@ -336,11 +336,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 const a = document.createElement('a');
                 a.style.display = 'none';
                 a.href = url;
-                
+
                 const format = requestData.output_format.toLowerCase();
                 const ext = format === 'jpeg' ? 'jpg' : format;
                 a.download = `planche_bd_q${requestData.quality}.${ext}`;
-                
+
                 document.body.appendChild(a);
                 a.click();
                 window.URL.revokeObjectURL(url);
@@ -385,11 +385,11 @@ document.addEventListener('DOMContentLoaded', () => {
             dropZone.addEventListener('drop', (e) => {
                 e.preventDefault();
                 dropZone.classList.remove('drag-over');
-                
-                const files = Array.from(e.dataTransfer.files).filter(file => 
+
+                const files = Array.from(e.dataTransfer.files).filter(file =>
                     file.type.startsWith('image/')
                 );
-                
+
                 if (files.length > 0) {
                     handleFileUpload(files);
                 }
@@ -406,35 +406,130 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function handleFileUpload(files) {
-        const formData = new FormData();
-        files.forEach(file => formData.append('panel_files[]', file));
-
+    async function handleFileUpload(files) {
         showProgress();
+        const statusDiv = document.getElementById('status-message');
+        const thumbnailsGrid = document.querySelector('.thumbnails-grid');
+        const thumbnailsSection = document.querySelector('.thumbnails-section');
 
-        fetch('/upload_panels', {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => response.json())
-        .then(data => {
-            hideProgress();
-            if (data.success) {
-                showStatusMessage(`✅ ${data.uploaded_count} images ajoutées`, 'success');
-                setTimeout(() => location.reload(), 1000);
-            } else {
-                showStatusMessage('❌ Erreur upload', 'error');
+        let successCount = 0;
+        let totalFiles = files.length;
+
+        for (let i = 0; i < files.length; i++) {
+            let file = files[i];
+
+            // Mise à jour de la barre de progression
+            updateProgressBar((i / totalFiles) * 100);
+
+            // Gestion de la compression si trop gros (> 4 Mo pour Vercel)
+            const MAX_SIZE = 4 * 1024 * 1024;
+            console.log(`Fichier: ${file.name}, Taille: ${(file.size / 1024 / 1024).toFixed(2)} Mo`);
+
+            if (file.size > MAX_SIZE) {
+                console.log(`Compression requise pour Vercel...`);
+                try {
+                    file = await compressImage(file);
+                    console.log(`Après compression: ${(file.size / 1024 / 1024).toFixed(2)} Mo`);
+                } catch (err) {
+                    console.error("Erreur compression:", err);
+                }
             }
-        })
-        .catch(error => {
-            hideProgress();
-            showStatusMessage('❌ Erreur connexion', 'error');
+
+            const formData = new FormData();
+            formData.append('panel_file', file);
+
+            try {
+                const response = await fetch('/upload_panels', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    successCount++;
+                    // Ajouter l'image à la grille sans recharger
+                    if (thumbnailsGrid && data.total_images) {
+                        // On récupère le dernier nom de fichier ajouté
+                        const newFilename = data.errors && data.errors.length ? null : data.panel_filenames?.[data.panel_filenames.length - 1];
+                        // Note: Le backend actuel ne renvoie pas panel_filenames, je vais l'ajuster ou utiliser une autre méthode
+                        // Pour l'instant, disons qu'on force l'UI à se rafraîchir plus intelligemment ou on prévient l'utilisateur
+                    }
+                }
+            } catch (error) {
+                console.error(`Erreur upload ${file.name}:`, error);
+            }
+        }
+
+        updateProgressBar(100);
+        setTimeout(hideProgress, 500);
+
+        if (successCount > 0) {
+            showStatusMessage(`✅ ${successCount}/${totalFiles} images ajoutées. Veuillez patienter...`, 'success');
+            // Comme le stockage Vercel est complexe, on fait un reload soft ou on prévient
+            // Pour l'instant, on recharge pour peupler panel_images du template, mais on a réduit le risque de 403
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showStatusMessage('❌ Erreur upload', 'error');
+        }
+    }
+
+    function updateProgressBar(percent) {
+        const fill = document.getElementById('progress-fill');
+        if (fill) fill.style.width = `${percent}%`;
+    }
+
+    async function compressImage(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = (event) => {
+                const img = new Image();
+                img.src = event.target.result;
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    let width = img.width;
+                    let height = img.height;
+
+                    // Si vraiment immense, on réduit les dimensions
+                    const MAX_DIM = 1800; // Plus prudent pour Vercel (4.5 Mo)
+                    if (width > MAX_DIM || height > MAX_DIM) {
+                        if (width > height) {
+                            height *= MAX_DIM / width;
+                            width = MAX_DIM;
+                        } else {
+                            width *= MAX_DIM / height;
+                            height = MAX_DIM;
+                        }
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    // Compression JPEG 0.7 (Plus agressif pour garantir < 4.5 Mo)
+                    canvas.toBlob((blob) => {
+                        if (blob) {
+                            const compressedFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpg", {
+                                type: 'image/jpeg',
+                                lastModified: Date.now()
+                            });
+                            resolve(compressedFile);
+                        } else {
+                            reject(new Error("Canvas toBlob failed"));
+                        }
+                    }, 'image/jpeg', 0.7);
+                };
+                img.onerror = reject;
+            };
+            reader.onerror = reject;
         });
     }
 
     function showProgress() {
         const bar = document.getElementById('progress-bar');
         if (bar) bar.style.display = 'block';
+        updateProgressBar(0);
     }
 
     function hideProgress() {
@@ -446,7 +541,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const statusDiv = document.getElementById('status-message');
         if (statusDiv) {
             statusDiv.innerHTML = `<div class="status-message status-${type}">${message}</div>`;
-            setTimeout(() => statusDiv.innerHTML = '', 3000);
+            // On ne l'efface pas tout de suite si c'est un succès important
+            if (type !== 'success' || !message.includes('patienter')) {
+                setTimeout(() => {
+                    if (statusDiv.innerHTML.includes(message)) statusDiv.innerHTML = '';
+                }, 3000);
+            }
         }
     }
 
