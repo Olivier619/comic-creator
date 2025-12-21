@@ -1,15 +1,26 @@
 document.addEventListener('DOMContentLoaded', () => {
     console.log("Éditeur BD - Script principal chargé");
+    // --- État local pour résilience Vercel ---
+    window.localImages = {}; // { filename: File object }
+    window.localTemplate = null; // File object
 
     let draggedSrc = null;
 
     // --- Initialisation de l'éditeur ---
-    function initializeEditor() {
+    function initializeEditor(remoteCoords = null, localSrc = null) {
         const editorArea = document.getElementById('editor-area');
         if (!editorArea) return;
 
-        const templateImage = editorArea.querySelector('#template-image');
-        if (!templateImage || !window.panelCoordinates || window.panelCoordinates.length === 0) {
+        let templateImage = editorArea.querySelector('#template-image');
+
+        // Si on a une source locale (ObjectURL), on l'applique
+        if (localSrc && templateImage) {
+            templateImage.src = localSrc;
+        }
+
+        const coordsToUse = remoteCoords || window.panelCoordinates;
+
+        if (!templateImage || !coordsToUse || coordsToUse.length === 0) {
             console.log("Pas de template ou de coordonnées de panels");
             return;
         }
