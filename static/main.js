@@ -52,7 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
             editorArea.querySelectorAll('.panel-drop-zone').forEach(zone => zone.remove());
 
             // Créer les nouvelles zones avec positionnement correct
-            window.panelCoordinates.forEach((coords, index) => {
+            coordsToUse.forEach((coords, index) => {
                 const zone = document.createElement('div');
                 zone.className = 'panel-drop-zone';
                 zone.style.position = 'absolute';
