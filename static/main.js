@@ -372,6 +372,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 ctx.drawImage(panelImg, imgRealX, imgRealY, imgRealW, imgRealH);
                 ctx.restore();
+
+                // 3. Dessiner le cadre noir (Borders)
+                ctx.strokeStyle = 'black';
+                ctx.lineWidth = 2; // Trait net sur haute résolution
+                ctx.strokeRect(panelX, panelY, panelW, panelH);
             }
 
             // Exporter le résultat
