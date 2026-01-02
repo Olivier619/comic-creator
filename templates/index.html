@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="fr">
+
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -24,7 +25,7 @@
             border-right: 1px solid #ddd;
             padding: 20px;
             overflow-y: auto;
-            box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+            box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
         }
 
         .sidebar h1 {
@@ -197,7 +198,7 @@
             background: white;
             border-radius: 8px;
             padding: 20px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
             min-height: 600px;
         }
 
@@ -216,7 +217,8 @@
             z-index: 10;
             transition: all 0.3s ease;
             /* CLIPPING ESSENTIEL : */
-            overflow: hidden; /* Les images ne peuvent pas dépasser */
+            overflow: hidden;
+            /* Les images ne peuvent pas dépasser */
         }
 
         .panel-drop-zone:hover {
@@ -306,18 +308,19 @@
             .main-container {
                 flex-direction: column;
             }
-            
+
             .sidebar {
                 width: 100%;
                 max-height: 400px;
             }
-            
+
             .thumbnails-grid {
                 grid-template-columns: repeat(6, 1fr);
             }
         }
     </style>
 </head>
+
 <body>
     <div class="main-container">
         <!-- Sidebar avec contrôles -->
@@ -338,8 +341,10 @@
                 <h2>2. Vos Images</h2>
                 <div class="drop-zone" id="drop-zone">
                     <p>📁 Glisser images ici</p>
-                    <input type="file" name="panel_files[]" multiple accept="image/*" id="file-input" class="file-input" />
-                    <button type="button" class="file-input-button" onclick="document.getElementById('file-input').click()">
+                    <input type="file" name="panel_files[]" multiple accept="image/*" id="file-input"
+                        class="file-input" />
+                    <button type="button" class="file-input-button"
+                        onclick="document.getElementById('file-input').click()">
                         Parcourir
                     </button>
                 </div>
@@ -355,10 +360,8 @@
                 <h3>📸 Images ({{ panel_images|length }})</h3>
                 <div class="thumbnails-grid">
                     {% for image in panel_images %}
-                        <img src="{{ url_for('uploaded_file', filename=image) }}" 
-                             alt="Image" 
-                             class="thumbnail-item"
-                             draggable="true" />
+                    <img src="{{ url_for('uploaded_file', filename=image) }}" alt="Image" class="thumbnail-item"
+                        draggable="true" />
                     {% endfor %}
                 </div>
             </div>
@@ -403,7 +406,7 @@
 
                 <div class="control-group">
                     <label>
-                        <input type="checkbox" id="enhance-quality" /> Améliorer netteté
+                        <input type="checkbox" id="enhance-quality" checked /> Améliorer netteté
                     </label>
                 </div>
             </div>
@@ -418,11 +421,10 @@
         <div class="editor-container">
             <div id="editor-area">
                 {% if template_image %}
-                    <img src="{{ url_for('uploaded_file', filename=template_image) }}" 
-                         alt="Planche de BD" 
-                         id="template-image" />
+                <img src="{{ url_for('uploaded_file', filename=template_image) }}" alt="Planche de BD"
+                    id="template-image" />
                 {% else %}
-                    <p>Chargez d'abord une planche template pour commencer.</p>
+                <p>Chargez d'abord une planche template pour commencer.</p>
                 {% endif %}
             </div>
         </div>
@@ -430,16 +432,17 @@
 
     <!-- Coordonnées des panels -->
     {% if panel_coordinates %}
-        <script>
-            window.panelCoordinates = {{ panel_coordinates|tojson }};
-        </script>
+    <script>
+        window.panelCoordinates = {{ panel_coordinates | tojson }};
+    </script>
     {% else %}
-        <script>
-            window.panelCoordinates = [];
-        </script>
+    <script>
+        window.panelCoordinates = [];
+    </script>
     {% endif %}
 
     <!-- JavaScript principal -->
     <script src="{{ url_for('static', filename='main.js') }}"></script>
 </body>
+
 </html>

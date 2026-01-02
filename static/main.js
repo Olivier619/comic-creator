@@ -365,12 +365,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 const imgRealX = panelX + (parseFloat(img.style.left) / scale);
                 const imgRealY = panelY + (parseFloat(img.style.top) / scale);
 
+                // --- AMÉLIORATION QUALITÉ ---
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+
                 // Option: Amélioration de la netteté si cochée
                 if (document.getElementById('enhance-quality')?.checked) {
-                    ctx.filter = 'contrast(1.1) saturate(1.1)';
+                    // Un filtre de contraste et une légère saturation aident à compenser le flou du redimensionnement
+                    ctx.filter = 'contrast(1.05) saturate(1.05) brightness(1.02)';
+                } else {
+                    ctx.filter = 'none';
                 }
 
                 ctx.drawImage(panelImg, imgRealX, imgRealY, imgRealW, imgRealH);
+                ctx.filter = 'none'; // Reset filter for next operations
                 ctx.restore();
 
                 // 3. Dessiner le cadre noir (Borders)
