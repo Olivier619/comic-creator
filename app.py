@@ -5,7 +5,7 @@ import numpy as np
 from flask import Flask, render_template, request, redirect, url_for, send_from_directory, session, jsonify, send_file
 from werkzeug.utils import secure_filename
 from werkzeug.exceptions import RequestEntityTooLarge
-from PIL import Image, ImageEnhance
+from PIL import Image, ImageEnhance, ImageDraw
 import hashlib
 
 # Configuration améliorée
@@ -80,26 +80,37 @@ def detect_panels(image_path):
                 epsilon = 0.01 * cv2.arcLength(contour, True)
                 approx = cv2.approxPolyDP(contour, epsilon, True)
                 
-                # Accepter les formes qui ressemblent à des rectangles
-                if len(approx) >= 4:
-                    x, y, w, h = cv2.boundingRect(contour)
+                # Accepter les formes qui ressemblent à des rectangles ou cercles/ellipses
+                x, y, w, h = cv2.boundingRect(contour)
+                
+                # Calculer la "rectangularité" (solidity en quelque sorte par rapport au BB)
+                bbox_area = w * h
+                ratio = area / bbox_area if bbox_area > 0 else 0
+                
+                # Une case rectangle parfaite a un ratio proche de 1.0 (souvent > 0.98 avec le bruit)
+                # Une case avec des arrondis aura un ratio plus faible.
+                # Seuil plus sensible : 0.992 pour capturer même les légers arrondis
+                
+                # Filtrer les rectangles trop fins ou trop petits
+                aspect_ratio = float(w) / h
+                if w > 50 and h > 50 and 0.2 < aspect_ratio < 5.0:
+                    # Plus il y a de points après approximation (len(approx)), plus c'est courbe
+                    is_rounded = ratio < 0.992 or len(approx) > 8
                     
-                    # Filtrer les rectangles trop fins ou trop petits
-                    aspect_ratio = float(w) / h
-                    if w > 50 and h > 50 and 0.2 < aspect_ratio < 5.0:
-                        panels.append({
-                            'x': int(x), 
-                            'y': int(y), 
-                            'width': int(w), 
-                            'height': int(h)
-                        })
+                    panels.append({
+                        'x': int(x), 
+                        'y': int(y), 
+                        'width': int(w), 
+                        'height': int(h),
+                        'rounded': is_rounded
+                    })
         
         # Tri par position (ligne par ligne, gauche à droite)
         panels.sort(key=lambda p: (p['y'] // 100, p['x']))
         
         print(f"Panels détectés: {len(panels)}")
         for i, panel in enumerate(panels):
-            print(f"Panel {i}: x={panel['x']}, y={panel['y']}, w={panel['width']}, h={panel['height']}")
+            print(f"Panel {i}: x={panel['x']}, y={panel['y']}, w={panel['width']}, h={panel['height']}, rounded={panel.get('rounded', False)}")
         
         return panels
 
@@ -261,11 +272,16 @@ def generate_image():
         paste_y = int(img_data['img_top'])
 
         # Créer un masque pour découper selon les limites du panel
-        mask = Image.new('L', (adjusted_panel_w, adjusted_panel_h), 0)
-        mask_draw = Image.new('L', (adjusted_panel_w, adjusted_panel_h), 255)
-        
-        panel_canvas.paste(resized_img, (paste_x, paste_y))
-        panel_canvas = Image.composite(panel_canvas, Image.new('RGBA', panel_canvas.size, (0,0,0,0)), mask_draw)
+        if img_data.get('rounded', False):
+            mask = Image.new('L', (adjusted_panel_w, adjusted_panel_h), 0)
+            draw = ImageDraw.Draw(mask)
+            draw.rounded_rectangle((0, 0, adjusted_panel_w, adjusted_panel_h), radius=25, fill=255)
+            panel_canvas.paste(resized_img, (paste_x, paste_y))
+            panel_canvas = Image.composite(panel_canvas, Image.new('RGBA', panel_canvas.size, (0,0,0,0)), mask)
+        else:
+            mask_draw = Image.new('L', (adjusted_panel_w, adjusted_panel_h), 255)
+            panel_canvas.paste(resized_img, (paste_x, paste_y))
+            panel_canvas = Image.composite(panel_canvas, Image.new('RGBA', panel_canvas.size, (0,0,0,0)), mask_draw)
         
         # Coller le panel sur l'image finale
         final_image.paste(panel_canvas, (adjusted_panel_x, adjusted_panel_y), panel_canvas)

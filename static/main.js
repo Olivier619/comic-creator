@@ -72,12 +72,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Ajouter les event listeners
                 zone.addEventListener('dragover', handleDragOver);
                 zone.addEventListener('drop', handleDrop);
-                zone.addEventListener('click', () => {
-                    console.log(`Zone ${index}: x=${coords.x}, y=${coords.y}, w=${coords.width}, h=${coords.height}`);
+
+                // Toggle manuel des arrondis au clic
+                zone.addEventListener('click', (e) => {
+                    // Si on clique sur l'image pour la déplacer, on ne veut pas toggle par accident
+                    // Mais ici c'est sur la zone, pas l'image.
+                    if (e.target === zone) {
+                        zone.classList.toggle('rounded');
+                        console.log(`Zone ${index} toggled: ${zone.classList.contains('rounded') ? 'rounded' : 'square'}`);
+                    }
                 });
 
+                if (coords.rounded) {
+                    zone.classList.add('rounded');
+                }
+
                 editorArea.appendChild(zone);
-                console.log(`Zone ${index} créée: ${zone.style.left}, ${zone.style.top}, ${zone.style.width}x${zone.style.height}`);
+                console.log(`Zone ${index} créée: ${zone.style.left}, ${zone.style.top}, ${zone.style.width}x${zone.style.height}, rounded=${coords.rounded}`);
             });
 
             attachSaveHandler();
@@ -171,6 +182,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Pan (déplacement)
         img.addEventListener('mousedown', (e) => {
+            if (e.shiftKey) {
+                // Shift+Click sur l'image pour toggle les arrondis de la zone
+                img.parentElement.classList.toggle('rounded');
+                return;
+            }
             e.preventDefault();
             e.stopPropagation();
             isDragging = true;
@@ -356,7 +372,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Rognage (Clipping)
                 ctx.save();
                 ctx.beginPath();
-                ctx.rect(panelX, panelY, panelW, panelH);
+                if (zone.classList.contains('rounded')) {
+                    // Utiliser roundRect si disponible (Chrome 99+, Safari 15+, Firefox 102+)
+                    const radius = 25; // Doit correspondre au CSS
+                    if (ctx.roundRect) {
+                        ctx.roundRect(panelX, panelY, panelW, panelH, radius);
+                    } else {
+                        // Fallback pour navigateurs plus anciens
+                        ctx.moveTo(panelX + radius, panelY);
+                        ctx.arcTo(panelX + panelW, panelY, panelX + panelW, panelY + panelH, radius);
+                        ctx.arcTo(panelX + panelW, panelY + panelH, panelX, panelY + panelH, radius);
+                        ctx.arcTo(panelX, panelY + panelH, panelX, panelY, radius);
+                        ctx.arcTo(panelX, panelY, panelX + panelW, panelY, radius);
+                        ctx.closePath();
+                    }
+                } else {
+                    ctx.rect(panelX, panelY, panelW, panelH);
+                }
                 ctx.clip();
 
                 // Position de l'image par rapport au panel (échelle réelle)
@@ -384,7 +416,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 // 3. Dessiner le cadre noir (Borders)
                 ctx.strokeStyle = 'black';
                 ctx.lineWidth = 2; // Trait net sur haute résolution
-                ctx.strokeRect(panelX, panelY, panelW, panelH);
+
+                if (zone.classList.contains('rounded')) {
+                    const radius = 25;
+                    ctx.beginPath();
+                    if (ctx.roundRect) {
+                        ctx.roundRect(panelX, panelY, panelW, panelH, radius);
+                    } else {
+                        ctx.moveTo(panelX + radius, panelY);
+                        ctx.arcTo(panelX + panelW, panelY, panelX + panelW, panelY + panelH, radius);
+                        ctx.arcTo(panelX + panelW, panelY + panelH, panelX, panelY + panelH, radius);
+                        ctx.arcTo(panelX, panelY + panelH, panelX, panelY, radius);
+                        ctx.arcTo(panelX, panelY, panelX + panelW, panelY, radius);
+                        ctx.closePath();
+                    }
+                    ctx.stroke();
+                } else {
+                    ctx.strokeRect(panelX, panelY, panelW, panelH);
+                }
             }
 
             // Exporter le résultat
