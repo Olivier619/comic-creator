@@ -1,6 +1,5 @@
 import os
 import io
-import numpy as np
 
 from flask import (
     Flask, render_template, request, redirect,
@@ -10,17 +9,7 @@ from werkzeug.utils import secure_filename
 from werkzeug.exceptions import RequestEntityTooLarge
 from PIL import Image, ImageEnhance, ImageDraw
 
-# =========================
-# Configuration générale
-# =========================
-
 IS_VERCEL = "VERCEL" in os.environ
-
-# OpenCV uniquement hors Vercel (pour éviter libxcb.so.1 manquant)
-if not IS_VERCEL:
-    import cv2
-else:
-    cv2 = None
 
 if IS_VERCEL:
     UPLOAD_FOLDER = "/tmp/uploads"
@@ -34,10 +23,9 @@ ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp", "bmp", "tiff"}
 app = Flask(__name__)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 app.config["CACHE_FOLDER"] = CACHE_FOLDER
-app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100MB max
+app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024
 app.secret_key = "super-secret-key"
 
-# Créer les dossiers nécessaires
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(CACHE_FOLDER, exist_ok=True)
 
@@ -45,10 +33,6 @@ if not IS_VERCEL:
     os.makedirs("templates", exist_ok=True)
     os.makedirs("static", exist_ok=True)
 
-
-# =========================
-# Gestion erreurs
-# =========================
 
 @app.errorhandler(RequestEntityTooLarge)
 def handle_file_too_large(e):
@@ -59,100 +43,11 @@ def allowed_file(filename: str) -> bool:
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
-# =========================
-# Détection de panels
-# =========================
-
 def detect_panels(image_path: str):
-    """
-    Détection améliorée des panels avec OpenCV.
-    Sur Vercel (cv2 indisponible), renvoie une liste vide pour éviter le crash.
-    """
-    if cv2 is None:
-        # Sur Vercel: pas d'OpenCV → pas de détection automatique
-        print("cv2 non disponible (environnement Vercel), detect_panels() renvoie [].")
-        return []
+    # Version sans OpenCV pour Vercel : pas de détection auto, juste liste vide
+    print("detect_panels() sans OpenCV → retourne [].")
+    return []
 
-    try:
-        img = cv2.imread(image_path)
-        if img is None:
-            print(f"Erreur: Image non chargée depuis {image_path}")
-            return []
-
-        # Conversion en niveaux de gris
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-        # Amélioration du contraste
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-        gray = clahe.apply(gray)
-
-        # Détection des contours avec Canny
-        edges = cv2.Canny(gray, 50, 150, apertureSize=3, L2gradient=True)
-
-        # Morphologie pour combler les petits trous
-        kernel = np.ones((3, 3), np.uint8)
-        edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
-
-        # Trouver les contours
-        contours, _ = cv2.findContours(
-            edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-        )
-
-        panels = []
-        img_height, img_width, _ = img.shape
-
-        min_area = (img_width * img_height) * 0.01
-        max_area = (img_width * img_height) * 0.95
-
-        for contour in contours:
-            area = cv2.contourArea(contour)
-            if not (min_area < area < max_area):
-                continue
-
-            epsilon = 0.01 * cv2.arcLength(contour, True)
-            approx = cv2.approxPolyDP(contour, epsilon, True)
-
-            x, y, w, h = cv2.boundingRect(contour)
-
-            bbox_area = w * h
-            ratio = area / bbox_area if bbox_area > 0 else 0
-
-            aspect_ratio = float(w) / h
-            if not (w > 50 and h > 50 and 0.2 < aspect_ratio < 5.0):
-                continue
-
-            is_rounded = ratio < 0.992 or len(approx) > 8
-
-            panels.append(
-                {
-                    "x": int(x),
-                    "y": int(y),
-                    "width": int(w),
-                    "height": int(h),
-                    "rounded": is_rounded,
-                }
-            )
-
-        panels.sort(key=lambda p: (p["y"] // 100, p["x"]))
-
-        print(f"Panels détectés: {len(panels)}")
-        for i, panel in enumerate(panels):
-            print(
-                f"Panel {i}: x={panel['x']}, y={panel['y']}, "
-                f"w={panel['width']}, h={panel['height']}, "
-                f"rounded={panel.get('rounded', False)}"
-            )
-
-        return panels
-
-    except Exception as e:
-        print(f"Erreur lors de la détection des panels: {e}")
-        return []
-
-
-# =========================
-# Routes principales
-# =========================
 
 @app.route("/")
 def index():
@@ -187,11 +82,8 @@ def upload_template():
 
     session["template_image"] = filename
 
-    # Détection de panels (en local seulement si cv2 dispo)
     panel_coords = detect_panels(file_path)
     session["panel_coordinates"] = panel_coords
-
-    # Clear des anciennes images de panels
     session.pop("panel_images", None)
 
     if (
@@ -363,10 +255,6 @@ def generate_image():
         img_io, mimetype=mimetype, as_attachment=True, download_name=filename
     )
 
-
-# =========================
-# Routes statiques pour Vercel
-# =========================
 
 @app.route("/static/<path:filename>")
 def serve_static(filename):
