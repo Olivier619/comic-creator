@@ -1,6 +1,5 @@
 import os
 import io
-import cv2
 import numpy as np
 
 from flask import (
@@ -11,9 +10,17 @@ from werkzeug.utils import secure_filename
 from werkzeug.exceptions import RequestEntityTooLarge
 from PIL import Image, ImageEnhance, ImageDraw
 
-# Configuration améliorée
+# =========================
+# Configuration générale
+# =========================
 
 IS_VERCEL = "VERCEL" in os.environ
+
+# OpenCV uniquement hors Vercel (pour éviter libxcb.so.1 manquant)
+if not IS_VERCEL:
+    import cv2
+else:
+    cv2 = None
 
 if IS_VERCEL:
     UPLOAD_FOLDER = "/tmp/uploads"
@@ -39,7 +46,10 @@ if not IS_VERCEL:
     os.makedirs("static", exist_ok=True)
 
 
-# Gestion des erreurs pour fichiers trop volumineux
+# =========================
+# Gestion erreurs
+# =========================
+
 @app.errorhandler(RequestEntityTooLarge)
 def handle_file_too_large(e):
     return jsonify({"error": "Fichier trop volumineux. Limite: 100MB"}), 413
@@ -49,10 +59,20 @@ def allowed_file(filename: str) -> bool:
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
+# =========================
+# Détection de panels
+# =========================
+
 def detect_panels(image_path: str):
     """
-    Détection améliorée des panels avec meilleure précision pour les cases BD
+    Détection améliorée des panels avec OpenCV.
+    Sur Vercel (cv2 indisponible), renvoie une liste vide pour éviter le crash.
     """
+    if cv2 is None:
+        # Sur Vercel: pas d'OpenCV → pas de détection automatique
+        print("cv2 non disponible (environnement Vercel), detect_panels() renvoie [].")
+        return []
+
     try:
         img = cv2.imread(image_path)
         if img is None:
@@ -66,7 +86,7 @@ def detect_panels(image_path: str):
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
         gray = clahe.apply(gray)
 
-        # Détection des contours avec Canny (plus précis pour les BD)
+        # Détection des contours avec Canny
         edges = cv2.Canny(gray, 50, 150, apertureSize=3, L2gradient=True)
 
         # Morphologie pour combler les petits trous
@@ -81,30 +101,26 @@ def detect_panels(image_path: str):
         panels = []
         img_height, img_width, _ = img.shape
 
-        min_area = (img_width * img_height) * 0.01  # Panels plus petits acceptés
-        max_area = (img_width * img_height) * 0.95  # Éviter le contour de l'image entière
+        min_area = (img_width * img_height) * 0.01
+        max_area = (img_width * img_height) * 0.95
 
         for contour in contours:
             area = cv2.contourArea(contour)
             if not (min_area < area < max_area):
                 continue
 
-            # Approximation polygonale
             epsilon = 0.01 * cv2.arcLength(contour, True)
             approx = cv2.approxPolyDP(contour, epsilon, True)
 
             x, y, w, h = cv2.boundingRect(contour)
 
-            # Rectangularité
             bbox_area = w * h
             ratio = area / bbox_area if bbox_area > 0 else 0
 
-            # Filtrer les rectangles trop fins ou trop petits
             aspect_ratio = float(w) / h
             if not (w > 50 and h > 50 and 0.2 < aspect_ratio < 5.0):
                 continue
 
-            # Plus il y a de points après approximation, plus c'est courbe
             is_rounded = ratio < 0.992 or len(approx) > 8
 
             panels.append(
@@ -134,7 +150,9 @@ def detect_panels(image_path: str):
         return []
 
 
-# ===== ROUTES PRINCIPALES =====
+# =========================
+# Routes principales
+# =========================
 
 @app.route("/")
 def index():
@@ -169,11 +187,11 @@ def upload_template():
 
     session["template_image"] = filename
 
-    # Détecter les panels et stocker les coordonnées
+    # Détection de panels (en local seulement si cv2 dispo)
     panel_coords = detect_panels(file_path)
     session["panel_coordinates"] = panel_coords
 
-    # Clear old panel images when new template uploaded
+    # Clear des anciennes images de panels
     session.pop("panel_images", None)
 
     if (
@@ -346,7 +364,9 @@ def generate_image():
     )
 
 
-# ===== ROUTES STATIQUES POUR VERCEL =====
+# =========================
+# Routes statiques pour Vercel
+# =========================
 
 @app.route("/static/<path:filename>")
 def serve_static(filename):
